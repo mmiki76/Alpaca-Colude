@@ -5,10 +5,12 @@ import sys
 
 from .models import TradingViewAlert, OrderResult
 from .config import get_settings
-from .binance_client import get_client, calculate_quantity, place_market_order, get_current_price
+from .binance_client import (
+    get_client, calculate_quantity, place_market_order,
+    get_current_price_spot, get_current_price_futures, clean_symbol,
+)
 from .telegram_notifier import send_telegram, format_order_message, format_error_message
 
-# Logger setup
 logger.remove()
 logger.add(sys.stdout, format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}", level="INFO")
 logger.add(
@@ -26,12 +28,18 @@ app = FastAPI(
 )
 
 
-def get_usdt_balance(client) -> float:
+def get_usdt_balance(client, futures: bool) -> float:
     try:
-        account = client.get_account()
-        for asset in account["balances"]:
-            if asset["asset"] == "USDT":
-                return float(asset["free"])
+        if futures:
+            account = client.futures_account()
+            for asset in account["assets"]:
+                if asset["asset"] == "USDT":
+                    return float(asset["availableBalance"])
+        else:
+            account = client.get_account()
+            for asset in account["balances"]:
+                if asset["asset"] == "USDT":
+                    return float(asset["free"])
     except Exception:
         pass
     return 0.0
@@ -51,39 +59,37 @@ async def health():
 async def receive_alert(alert: TradingViewAlert):
     settings = get_settings()
 
-    # Verifica secretul
     if alert.secret != settings.webhook_secret:
-        logger.warning(f"Webhook primit cu secret gresit!")
+        logger.warning("Webhook primit cu secret gresit!")
         raise HTTPException(status_code=403, detail="Secret invalid")
 
-    # Normalizeaza
-    symbol = alert.symbol.upper().replace("/", "").replace("-", "")
+    symbol = clean_symbol(alert.symbol)
     action = alert.action.upper()
+    is_futures = settings.market_type.upper() == "FUTURES"
 
     if action not in ("BUY", "SELL"):
         raise HTTPException(status_code=400, detail=f"Actiune invalida: {action}. Foloseste BUY sau SELL.")
 
-    logger.info(f"Alert primit: {action} {symbol} | comentariu: {alert.comment}")
+    logger.info(f"Alert primit: {action} {symbol} ({'FUTURES' if is_futures else 'SPOT'}) | comentariu: {alert.comment}")
 
     try:
         client = get_client()
 
-        # Calculeaza cantitatea
         if alert.quantity:
             quantity = alert.quantity
         else:
-            quantity = calculate_quantity(client, symbol, settings.order_size_usdt)
+            quantity = calculate_quantity(client, symbol, settings.order_size_usdt, futures=is_futures)
 
-        # Executa ordinul
-        order = place_market_order(client, symbol, action, quantity)
-
-        price = float(order.get("fills", [{}])[0].get("price", 0)) or get_current_price(client, symbol)
+        order = place_market_order(client, symbol, action, quantity, futures=is_futures)
         order_id = str(order["orderId"])
 
-        # Sold USDT dupa trade
-        balance = get_usdt_balance(client)
+        if is_futures:
+            price = float(order.get("avgPrice", 0)) or get_current_price_futures(client, symbol)
+        else:
+            price = float(order.get("fills", [{}])[0].get("price", 0)) or get_current_price_spot(client, symbol)
 
-        # Notificare Telegram
+        balance = get_usdt_balance(client, is_futures)
+
         tg_msg = format_order_message(action, symbol, quantity, price, order_id, balance)
         await send_telegram(settings.telegram_bot_token, settings.telegram_chat_id, tg_msg)
 
