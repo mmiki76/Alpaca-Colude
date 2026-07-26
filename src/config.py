@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     order_size_usdt: float = 10.0
     leverage: int = 1
     market_type: str = "SPOT"
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
 
     class Config:
         env_file = ".env"

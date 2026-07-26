@@ -2,11 +2,11 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from loguru import logger
 import sys
-import os
 
 from .models import TradingViewAlert, OrderResult
 from .config import get_settings
 from .binance_client import get_client, calculate_quantity, place_market_order, get_current_price
+from .telegram_notifier import send_telegram, format_order_message, format_error_message
 
 # Logger setup
 logger.remove()
@@ -24,6 +24,17 @@ app = FastAPI(
     description="Webhook server pentru semnale TradingView → Binance",
     version="1.0.0",
 )
+
+
+def get_usdt_balance(client) -> float:
+    try:
+        account = client.get_account()
+        for asset in account["balances"]:
+            if asset["asset"] == "USDT":
+                return float(asset["free"])
+    except Exception:
+        pass
+    return 0.0
 
 
 @app.get("/")
@@ -67,6 +78,14 @@ async def receive_alert(alert: TradingViewAlert):
         order = place_market_order(client, symbol, action, quantity)
 
         price = float(order.get("fills", [{}])[0].get("price", 0)) or get_current_price(client, symbol)
+        order_id = str(order["orderId"])
+
+        # Sold USDT dupa trade
+        balance = get_usdt_balance(client)
+
+        # Notificare Telegram
+        tg_msg = format_order_message(action, symbol, quantity, price, order_id, balance)
+        await send_telegram(settings.telegram_bot_token, settings.telegram_chat_id, tg_msg)
 
         return OrderResult(
             success=True,
@@ -74,12 +93,14 @@ async def receive_alert(alert: TradingViewAlert):
             action=action,
             quantity=quantity,
             price=price,
-            order_id=str(order["orderId"]),
+            order_id=order_id,
             message=f"Ordin {action} executat cu succes pentru {quantity} {symbol}",
         )
 
     except Exception as e:
         logger.error(f"Eroare la executia ordinului {action} {symbol}: {e}")
+        err_msg = format_error_message(action, symbol, str(e))
+        await send_telegram(settings.telegram_bot_token, settings.telegram_chat_id, err_msg)
         raise HTTPException(status_code=500, detail=str(e))
 
 
