@@ -1,6 +1,8 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from loguru import logger
+import asyncio
 import sys
 
 from .models import TradingViewAlert, OrderResult
@@ -9,7 +11,7 @@ from .exchange_client import (
     get_exchange, clean_symbol, calculate_quantity,
     place_market_order, get_current_price, get_usdt_balance,
 )
-from .telegram_notifier import send_telegram, format_order_message, format_error_message
+from .telegram_notifier import send_telegram, format_order_message, format_error_message, format_status_message
 
 logger.remove()
 logger.add(sys.stdout, format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}", level="INFO")
@@ -21,10 +23,40 @@ logger.add(
     level="DEBUG",
 )
 
+REPORT_INTERVAL_SECONDS = 3 * 60 * 60  # 3 ore
+STATUS_SYMBOL = "SNDKON/USDT"
+
+
+async def periodic_report():
+    await asyncio.sleep(60)  # asteapta 1 minut la start
+    while True:
+        try:
+            settings = get_settings()
+            exchange = get_exchange()
+            exchange.load_markets()
+            is_futures = settings.market_type.upper() == "FUTURES"
+            price = get_current_price(exchange, STATUS_SYMBOL)
+            balance = get_usdt_balance(exchange, is_futures)
+            msg = format_status_message(STATUS_SYMBOL, price, balance)
+            await send_telegram(settings.telegram_bot_token, settings.telegram_chat_id, msg)
+            logger.info("Raport periodic trimis pe Telegram")
+        except Exception as e:
+            logger.warning(f"Eroare raport periodic: {e}")
+        await asyncio.sleep(REPORT_INTERVAL_SECONDS)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(periodic_report())
+    yield
+    task.cancel()
+
+
 app = FastAPI(
     title="Clode - Trading Bot",
     description="Webhook server pentru semnale TradingView",
     version="2.0.0",
+    lifespan=lifespan,
 )
 
 

@@ -38,3 +38,17 @@ def format_error_message(action: str, symbol: str, error: str) -> str:
         f"━━━━━━━━━━━━━━\n"
         f"❌ {error}"
     )
+
+
+def format_status_message(symbol: str, price: float, balance_usdt: float) -> str:
+    from datetime import datetime
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    return (
+        f"📋 <b>Raport periodic Clode</b>\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"🕐 {now}\n"
+        f"📊 Pereche: <b>{symbol}</b>\n"
+        f"💵 Pret curent: <b>{price:.4f} USDT</b>\n"
+        f"💼 Sold USDT: <b>{balance_usdt:.2f} USDT</b>\n"
+        f"✅ Bot activ"
+    )
