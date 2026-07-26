@@ -5,9 +5,9 @@ import sys
 
 from .models import TradingViewAlert, OrderResult
 from .config import get_settings
-from .binance_client import (
-    get_client, calculate_quantity, place_market_order,
-    get_current_price_spot, get_current_price_futures, clean_symbol,
+from .exchange_client import (
+    get_exchange, clean_symbol, calculate_quantity,
+    place_market_order, get_current_price, get_usdt_balance,
 )
 from .telegram_notifier import send_telegram, format_order_message, format_error_message
 
@@ -22,32 +22,16 @@ logger.add(
 )
 
 app = FastAPI(
-    title="Clode - Binance Trading Bot",
-    description="Webhook server pentru semnale TradingView → Binance",
-    version="1.0.0",
+    title="Clode - Trading Bot",
+    description="Webhook server pentru semnale TradingView",
+    version="2.0.0",
 )
-
-
-def get_usdt_balance(client, futures: bool) -> float:
-    try:
-        if futures:
-            account = client.futures_account()
-            for asset in account["assets"]:
-                if asset["asset"] == "USDT":
-                    return float(asset["availableBalance"])
-        else:
-            account = client.get_account()
-            for asset in account["balances"]:
-                if asset["asset"] == "USDT":
-                    return float(asset["free"])
-    except Exception:
-        pass
-    return 0.0
 
 
 @app.get("/")
 async def root():
-    return {"status": "online", "service": "Clode Binance Bot"}
+    settings = get_settings()
+    return {"status": "online", "exchange": settings.exchange, "market": settings.market_type}
 
 
 @app.get("/health")
@@ -63,32 +47,25 @@ async def receive_alert(alert: TradingViewAlert):
         logger.warning("Webhook primit cu secret gresit!")
         raise HTTPException(status_code=403, detail="Secret invalid")
 
-    symbol = clean_symbol(alert.symbol)
-    action = alert.action.upper()
     is_futures = settings.market_type.upper() == "FUTURES"
+    symbol = clean_symbol(alert.symbol, settings.exchange, is_futures)
+    action = alert.action.upper()
 
     if action not in ("BUY", "SELL"):
-        raise HTTPException(status_code=400, detail=f"Actiune invalida: {action}. Foloseste BUY sau SELL.")
+        raise HTTPException(status_code=400, detail=f"Actiune invalida: {action}")
 
-    logger.info(f"Alert primit: {action} {symbol} ({'FUTURES' if is_futures else 'SPOT'}) | comentariu: {alert.comment}")
+    logger.info(f"Alert: {action} {symbol} | {settings.exchange.upper()} {settings.market_type} | {alert.comment}")
 
     try:
-        client = get_client()
+        exchange = get_exchange()
+        exchange.load_markets()
 
-        if alert.quantity:
-            quantity = alert.quantity
-        else:
-            quantity = calculate_quantity(client, symbol, settings.order_size_usdt, futures=is_futures)
+        quantity = alert.quantity if alert.quantity else calculate_quantity(exchange, symbol, settings.order_size_usdt)
+        order = place_market_order(exchange, symbol, action, quantity)
+        order_id = str(order["id"])
 
-        order = place_market_order(client, symbol, action, quantity, futures=is_futures)
-        order_id = str(order["orderId"])
-
-        if is_futures:
-            price = float(order.get("avgPrice", 0)) or get_current_price_futures(client, symbol)
-        else:
-            price = float(order.get("fills", [{}])[0].get("price", 0)) or get_current_price_spot(client, symbol)
-
-        balance = get_usdt_balance(client, is_futures)
+        price = float(order.get("average") or order.get("price") or 0) or get_current_price(exchange, symbol)
+        balance = get_usdt_balance(exchange, is_futures)
 
         tg_msg = format_order_message(action, symbol, quantity, price, order_id, balance)
         await send_telegram(settings.telegram_bot_token, settings.telegram_chat_id, tg_msg)
@@ -100,13 +77,13 @@ async def receive_alert(alert: TradingViewAlert):
             quantity=quantity,
             price=price,
             order_id=order_id,
-            message=f"Ordin {action} executat cu succes pentru {quantity} {symbol}",
+            message=f"Ordin {action} executat: {quantity} {symbol} @ {price}",
         )
 
     except Exception as e:
-        logger.error(f"Eroare la executia ordinului {action} {symbol}: {e}")
-        err_msg = format_error_message(action, symbol, str(e))
-        await send_telegram(settings.telegram_bot_token, settings.telegram_chat_id, err_msg)
+        logger.error(f"Eroare {action} {symbol}: {e}")
+        await send_telegram(settings.telegram_bot_token, settings.telegram_chat_id,
+                            format_error_message(action, symbol, str(e)))
         raise HTTPException(status_code=500, detail=str(e))
 
 

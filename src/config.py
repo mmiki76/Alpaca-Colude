@@ -3,15 +3,18 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    binance_api_key: str
-    binance_api_secret: str
-    binance_testnet: bool = True
+    # Exchange: binance sau mexc
+    exchange: str = "mexc"
+    api_key: str
+    api_secret: str
+    testnet: bool = False
     webhook_secret: str
     host: str = "0.0.0.0"
     port: int = 8080
-    order_size_usdt: float = 10.0
+    order_size_usdt: float = 20.0
     leverage: int = 1
-    market_type: str = "SPOT"
+    # SPOT sau FUTURES
+    market_type: str = "FUTURES"
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
 
