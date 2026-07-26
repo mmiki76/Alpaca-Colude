@@ -6,7 +6,7 @@ echo "=== Clode - Binance Bot Install ==="
 
 # Update sistem
 sudo apt update && sudo apt upgrade -y
-sudo apt install -y python3 python3-pip python3-venv git curl ufw
+sudo apt install -y python3 python3-pip python3-venv git curl ufw nginx
 
 # Cloneaza repo (daca nu exista deja)
 APP_DIR="/opt/clode-binance"
@@ -41,15 +41,22 @@ sudo sed -i "s|USER_PLACEHOLDER|$USER|g" /etc/systemd/system/clode-binance.servi
 sudo systemctl daemon-reload
 sudo systemctl enable clode-binance
 
-# Firewall - permite port 8080
-sudo ufw allow 8080/tcp
+# Configureaza nginx ca reverse proxy (port 80 → 8080)
+sudo cp scripts/nginx-clode.conf /etc/nginx/sites-available/clode-binance
+sudo ln -sf /etc/nginx/sites-available/clode-binance /etc/nginx/sites-enabled/clode-binance
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t && sudo systemctl enable nginx && sudo systemctl restart nginx
+
+# Firewall - permite port 80 (nginx) si SSH
+sudo ufw allow 80/tcp
 sudo ufw allow OpenSSH
 sudo ufw --force enable
 
 echo ""
 echo "=== Instalare completa! ==="
 echo "1. Editeaza .env: nano $APP_DIR/.env"
-echo "2. Porneste serviciul: sudo systemctl start clode-binance"
-echo "3. Vezi loguri: sudo journalctl -u clode-binance -f"
+echo "2. Asigura-te ca PORT=8080 in .env (nginx face proxy pe 80→8080)"
+echo "3. Porneste serviciul: sudo systemctl start clode-binance"
+echo "4. Vezi loguri: sudo journalctl -u clode-binance -f"
 echo ""
-echo "URL webhook pentru TradingView: http://IP_VPS_TAU:8080/webhook"
+echo "URL webhook pentru TradingView: http://IP_VPS_TAU/webhook"
