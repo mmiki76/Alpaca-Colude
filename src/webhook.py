@@ -77,7 +77,12 @@ async def process_order(settings, symbol: str, action: str, alert):
         exchange = get_exchange()
         exchange.load_markets()
 
-        quantity = alert.quantity if alert.quantity else calculate_quantity(exchange, symbol, settings.order_size_usdt)
+        if alert.quantity:
+            quantity = alert.quantity
+        elif settings.fixed_quantity > 0:
+            quantity = settings.fixed_quantity
+        else:
+            quantity = calculate_quantity(exchange, symbol, settings.order_size_usdt)
         order = place_market_order(exchange, symbol, action, quantity)
         order_id = str(order["id"])
 

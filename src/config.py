@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
     order_size_usdt: float = 20.0
+    fixed_quantity: float = 0.0  # daca > 0, foloseste cantitate fixa in loc de USDT
     leverage: int = 1
     # SPOT sau FUTURES
     market_type: str = "FUTURES"
