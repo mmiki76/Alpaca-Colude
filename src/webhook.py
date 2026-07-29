@@ -71,7 +71,28 @@ async def health():
     return {"status": "ok"}
 
 
-@app.post("/webhook", response_model=OrderResult)
+async def process_order(settings, symbol: str, action: str, alert):
+    try:
+        is_futures = settings.market_type.upper() == "FUTURES"
+        exchange = get_exchange()
+        exchange.load_markets()
+
+        quantity = alert.quantity if alert.quantity else calculate_quantity(exchange, symbol, settings.order_size_usdt)
+        order = place_market_order(exchange, symbol, action, quantity)
+        order_id = str(order["id"])
+
+        price = float(order.get("average") or order.get("price") or 0) or get_current_price(exchange, symbol)
+        balance = get_usdt_balance(exchange, is_futures)
+
+        tg_msg = format_order_message(action, symbol, quantity, price, order_id, balance)
+        await send_telegram(settings.telegram_bot_token, settings.telegram_chat_id, tg_msg)
+    except Exception as e:
+        logger.error(f"Eroare {action} {symbol}: {e}")
+        await send_telegram(settings.telegram_bot_token, settings.telegram_chat_id,
+                            format_error_message(action, symbol, str(e)))
+
+
+@app.post("/webhook")
 async def receive_alert(alert: TradingViewAlert):
     settings = get_settings()
 
@@ -88,35 +109,10 @@ async def receive_alert(alert: TradingViewAlert):
 
     logger.info(f"Alert: {action} {symbol} | {settings.exchange.upper()} {settings.market_type} | {alert.comment}")
 
-    try:
-        exchange = get_exchange()
-        exchange.load_markets()
+    # Raspunde imediat la TradingView, proceseaza ordinul in background
+    asyncio.create_task(process_order(settings, symbol, action, alert))
 
-        quantity = alert.quantity if alert.quantity else calculate_quantity(exchange, symbol, settings.order_size_usdt)
-        order = place_market_order(exchange, symbol, action, quantity)
-        order_id = str(order["id"])
-
-        price = float(order.get("average") or order.get("price") or 0) or get_current_price(exchange, symbol)
-        balance = get_usdt_balance(exchange, is_futures)
-
-        tg_msg = format_order_message(action, symbol, quantity, price, order_id, balance)
-        await send_telegram(settings.telegram_bot_token, settings.telegram_chat_id, tg_msg)
-
-        return OrderResult(
-            success=True,
-            symbol=symbol,
-            action=action,
-            quantity=quantity,
-            price=price,
-            order_id=order_id,
-            message=f"Ordin {action} executat: {quantity} {symbol} @ {price}",
-        )
-
-    except Exception as e:
-        logger.error(f"Eroare {action} {symbol}: {e}")
-        await send_telegram(settings.telegram_bot_token, settings.telegram_chat_id,
-                            format_error_message(action, symbol, str(e)))
-        raise HTTPException(status_code=500, detail=str(e))
+    return JSONResponse(status_code=200, content={"status": "accepted", "symbol": symbol, "action": action})
 
 
 @app.exception_handler(Exception)
