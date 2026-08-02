@@ -26,6 +26,10 @@ logger.add(
 REPORT_INTERVAL_SECONDS = 3 * 60 * 60  # 3 ore
 STATUS_SYMBOL = "SNDKON/USDT"
 
+# Tracking pozitie: None = fara pozitie, "BUY" = in pozitie long
+current_position: str | None = None
+position_lock = asyncio.Lock()
+
 
 async def periodic_report():
     await asyncio.sleep(60)  # asteapta 1 minut la start
@@ -72,6 +76,22 @@ async def health():
 
 
 async def process_order(settings, symbol: str, action: str, alert):
+    global current_position
+
+    async with position_lock:
+        # Ignora BUY daca suntem deja in pozitie long
+        if action == "BUY" and current_position == "BUY":
+            logger.info(f"BUY ignorat — suntem deja in pozitie pe {symbol}")
+            await send_telegram(settings.telegram_bot_token, settings.telegram_chat_id,
+                                f"⏭️ <b>BUY ignorat</b> — pozitie deja deschisa pe {symbol}")
+            return
+        # Ignora SELL daca nu suntem in pozitie
+        if action == "SELL" and current_position != "BUY":
+            logger.info(f"SELL ignorat — nu avem pozitie deschisa pe {symbol}")
+            await send_telegram(settings.telegram_bot_token, settings.telegram_chat_id,
+                                f"⏭️ <b>SELL ignorat</b> — nicio pozitie deschisa pe {symbol}")
+            return
+
     try:
         is_futures = settings.market_type.upper() == "FUTURES"
         exchange = get_exchange()
@@ -88,6 +108,9 @@ async def process_order(settings, symbol: str, action: str, alert):
 
         price = float(order.get("average") or order.get("price") or 0) or get_current_price(exchange, symbol)
         balance = get_usdt_balance(exchange, is_futures)
+
+        async with position_lock:
+            current_position = "BUY" if action == "BUY" else None
 
         tg_msg = format_order_message(action, symbol, quantity, price, order_id, balance)
         await send_telegram(settings.telegram_bot_token, settings.telegram_chat_id, tg_msg)
