@@ -3,7 +3,10 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from loguru import logger
 import asyncio
+import json
+import time
 import sys
+from pathlib import Path
 
 from .models import TradingViewAlert, OrderResult
 from .config import get_settings
@@ -23,12 +26,25 @@ logger.add(
     level="DEBUG",
 )
 
-REPORT_INTERVAL_SECONDS = 3 * 60 * 60  # 3 ore
+REPORT_INTERVAL_SECONDS = 3 * 60 * 60
 STATUS_SYMBOL = "SNDKON/USDT"
+STATE_FILE = Path("position_state.json")
+MIN_HOLD_SECONDS = 120  # minim 2 minute intre BUY si SELL
 
-# Tracking pozitie: None = fara pozitie, "BUY" = in pozitie long
-current_position: str | None = None
 position_lock = asyncio.Lock()
+
+
+def load_state() -> dict:
+    if STATE_FILE.exists():
+        try:
+            return json.loads(STATE_FILE.read_text())
+        except Exception:
+            pass
+    return {"position": None, "last_buy_time": 0}
+
+
+def save_state(position: str | None, last_buy_time: float):
+    STATE_FILE.write_text(json.dumps({"position": position, "last_buy_time": last_buy_time}))
 
 
 async def periodic_report():
@@ -76,21 +92,35 @@ async def health():
 
 
 async def process_order(settings, symbol: str, action: str, alert):
-    global current_position
-
     async with position_lock:
-        # Ignora BUY daca suntem deja in pozitie long
-        if action == "BUY" and current_position == "BUY":
-            logger.info(f"BUY ignorat — suntem deja in pozitie pe {symbol}")
+        state = load_state()
+        position = state["position"]
+        last_buy_time = state["last_buy_time"]
+        now = time.time()
+
+        if action == "BUY" and position == "BUY":
+            logger.info(f"BUY ignorat — deja in pozitie pe {symbol}")
             await send_telegram(settings.telegram_bot_token, settings.telegram_chat_id,
                                 f"⏭️ <b>BUY ignorat</b> — pozitie deja deschisa pe {symbol}")
             return
-        # Ignora SELL daca nu suntem in pozitie
-        if action == "SELL" and current_position != "BUY":
-            logger.info(f"SELL ignorat — nu avem pozitie deschisa pe {symbol}")
+
+        if action == "SELL" and position != "BUY":
+            logger.info(f"SELL ignorat — fara pozitie pe {symbol}")
             await send_telegram(settings.telegram_bot_token, settings.telegram_chat_id,
                                 f"⏭️ <b>SELL ignorat</b> — nicio pozitie deschisa pe {symbol}")
             return
+
+        if action == "SELL" and (now - last_buy_time) < MIN_HOLD_SECONDS:
+            wait = int(MIN_HOLD_SECONDS - (now - last_buy_time))
+            logger.info(f"SELL ignorat — prea devreme dupa BUY ({wait}s ramase)")
+            await send_telegram(settings.telegram_bot_token, settings.telegram_chat_id,
+                                f"⏭️ <b>SELL ignorat</b> — prea devreme dupa BUY ({wait}s)")
+            return
+
+        # Seteaza starea inainte de executie (previne race condition)
+        new_position = "BUY" if action == "BUY" else None
+        new_buy_time = now if action == "BUY" else last_buy_time
+        save_state(new_position, new_buy_time)
 
     try:
         is_futures = settings.market_type.upper() == "FUTURES"
@@ -109,13 +139,13 @@ async def process_order(settings, symbol: str, action: str, alert):
         price = float(order.get("average") or order.get("price") or 0) or get_current_price(exchange, symbol)
         balance = get_usdt_balance(exchange, is_futures)
 
-        async with position_lock:
-            current_position = "BUY" if action == "BUY" else None
-
         tg_msg = format_order_message(action, symbol, quantity, price, order_id, balance)
         await send_telegram(settings.telegram_bot_token, settings.telegram_chat_id, tg_msg)
     except Exception as e:
         logger.error(f"Eroare {action} {symbol}: {e}")
+        # Reseteaza starea daca ordinul a esuat
+        async with position_lock:
+            save_state(position, last_buy_time)
         await send_telegram(settings.telegram_bot_token, settings.telegram_chat_id,
                             format_error_message(action, symbol, str(e)))
 
