@@ -37,6 +37,7 @@ Risc: 1% din equity per trade (`--risk`), notional maxim 1× equity, slippage 1 
 
 - Testat: POC corect, fără look-ahead (semnalele pe date trunchiate sunt identice), short = oglinda long-ului,
   scenariu construit manual care respectă fiecare regulă, invariante (stop < intrare < target, RR ≥ minim).
+- `fetch_coinbase` (date publice, fără chei, cu volum real) a fost folosit pentru backtest pe SOL/ETH/INJ/STX/ZEC; `backtest(..., position_pct=0.6, fee_bps=25)` suportă mărime fixă din equity și comisioane.
 - **Nu e testat** `fetch_alpaca` (nu am chei Alpaca în sesiune) și nu am rulat backtest pe date reale.
   Rezultatul din `--demo` vine din date aleatoare și **nu spune nimic despre profitabilitate**.
 - Dacă stop și target sunt atinse în aceeași lumânare, se presupune stop-ul (conservator).

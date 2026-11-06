@@ -24,6 +24,8 @@ def backtest(
     risk_pct: float = 0.01,       # % din equity riscat per trade
     max_leverage: float = 1.0,    # limită notional / equity
     slippage_bps: float = 1.0,    # slippage advers la intrare și la stop
+    position_pct: float | None = None,  # dacă e setat: notional = position_pct * equity (ignoră risk_pct)
+    fee_bps: float = 0.0,         # comision per parte (intrare și ieșire), în bps din notional
 ) -> BacktestResult:
     raw = PocPullbackStrategy(params).run(df, side)
     slip = slippage_bps / 1e4
@@ -46,14 +48,19 @@ def backtest(
         risk_per_unit = abs(entry - t.stop)
         if risk_per_unit <= 0:
             continue
-        qty = min(realized * risk_pct / risk_per_unit, realized * max_leverage / entry)
-        pnl = qty * d * (exit_ - entry)
+        if position_pct is not None:
+            qty = realized * position_pct / entry
+        else:
+            qty = min(realized * risk_pct / risk_per_unit, realized * max_leverage / entry)
+        fees = qty * (entry + exit_) * fee_bps / 1e4
+        pnl = qty * d * (exit_ - entry) - fees
         pending.append((t.exit_idx, pnl))
         records.append({
             "side": t.side,
             "entry_time": df.index[t.entry_idx], "entry": entry, "stop": t.stop, "target": t.target,
             "poc": t.poc, "exit_time": df.index[t.exit_idx], "exit": exit_, "reason": t.exit_reason,
             "qty": qty, "pnl": pnl, "r": d * (exit_ - entry) / risk_per_unit,
+            "risk_pct_equity": qty * risk_per_unit / realized,
             "planned_rr": abs(t.target - entry) / risk_per_unit,
         })
 

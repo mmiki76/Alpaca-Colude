@@ -12,7 +12,7 @@ COLS = ["open", "high", "low", "close", "volume"]
 def load_csv(path: str) -> pd.DataFrame:
     df = pd.read_csv(path)
     df.columns = [c.lower() for c in df.columns]
-    tcol = next(c for c in ("timestamp", "time", "date", "datetime") if c in df.columns)
+    tcol = next((c for c in ("timestamp", "time", "date", "datetime", "t") if c in df.columns), df.columns[0])
     df[tcol] = pd.to_datetime(df[tcol], utc=True)
     return df.set_index(tcol).sort_index()[COLS]
 
@@ -39,6 +39,35 @@ def fetch_alpaca(symbol: str, timeframe: str = "15Min", days: int = 30, crypto: 
     if isinstance(bars.index, pd.MultiIndex):
         bars = bars.droplevel(0)
     return bars[COLS].sort_index()
+
+
+def fetch_coinbase(product: str, granularity_s: int = 3600, days: int = 365) -> pd.DataFrame:
+    """Candele publice Coinbase (fără chei), cu volum real. product ex: 'SOL-USD'."""
+    import time
+    import requests
+
+    end = pd.Timestamp.now(tz="UTC").floor("s")
+    start = end - pd.Timedelta(days=days)
+    step = pd.Timedelta(seconds=granularity_s * 300)
+    rows, cur = [], start
+    while cur < end:
+        nxt = min(cur + step, end)
+        for attempt in range(5):
+            r = requests.get(
+                f"https://api.exchange.coinbase.com/products/{product}/candles",
+                params={"granularity": granularity_s, "start": cur.isoformat(), "end": nxt.isoformat()},
+                timeout=20)
+            if r.status_code == 429:
+                time.sleep(1 + attempt)
+                continue
+            r.raise_for_status()
+            rows += r.json()
+            break
+        cur = nxt
+        time.sleep(0.15)
+    df = pd.DataFrame(rows, columns=["t", "low", "high", "open", "close", "volume"])
+    df["t"] = pd.to_datetime(df["t"], unit="s", utc=True)
+    return df.drop_duplicates("t").set_index("t").sort_index()[COLS]
 
 
 def synthetic_bars(n: int = 4000, seed: int = 0) -> pd.DataFrame:
