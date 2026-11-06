@@ -1,4 +1,5 @@
 numpy
 pandas
+requests
 alpaca-py   # doar pentru --symbol (date Alpaca)
 pytest      # teste

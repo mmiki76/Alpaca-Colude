@@ -93,6 +93,11 @@ def _atr(h: np.ndarray, l: np.ndarray, c: np.ndarray, period: int) -> np.ndarray
 class PocPullbackStrategy:
     def __init__(self, params: StrategyParams | None = None):
         self.p = params or StrategyParams()
+        # starea mașinii la ultima lumânare, în prețuri REALE (după fiecare run): dict cu
+        # state ("IDLE" | "ACTIVE" | "IN_TRADE"), poc, invalidation (nivelul care anulează setup-ul),
+        # move_extreme (HH pentru long / minimul mișcării pentru short)
+        self.last_state_long: dict = {"state": "IDLE"}
+        self.last_state_short: dict = {"state": "IDLE"}
 
     # ------------------------------------------------------------------ API
     def run(self, df: pd.DataFrame, side: Literal["long", "short", "both"] = "both") -> list[Trade]:
@@ -101,13 +106,23 @@ class PocPullbackStrategy:
         trades: list[Trade] = []
         if side in ("long", "both"):
             trades += self._run_long(o, h, l, c, v, "long")
+            self.last_state_long = self._final_state(1.0)
         if side in ("short", "both"):
             # oglindă: preț -> -preț, high <-> low
-            for t in self._run_long(-o, -l, -h, -c, v, "short"):
+            short_trades = self._run_long(-o, -l, -h, -c, v, "short")
+            self.last_state_short = self._final_state(-1.0)
+            for t in short_trades:
                 t.entry_price, t.stop, t.target, t.poc = -t.entry_price, -t.stop, -t.target, -t.poc
                 t.exit_price = -t.exit_price
                 trades.append(t)
         return sorted(trades, key=lambda t: t.entry_idx)
+
+    def _final_state(self, sign: float) -> dict:
+        f = self._final
+        if f["state"] != "ACTIVE":
+            return {"state": f["state"]}
+        return {"state": "ACTIVE", "poc": sign * f["poc"], "invalidation": sign * f["start_low"],
+                "move_extreme": sign * f["move_high"], "bos_idx": f["bos_idx"], "high_idx": f["high_idx"]}
 
     # ----------------------------------------------------------- state machine
     def _run_long(self, o, h, l, c, v, side: Side) -> list[Trade]:
@@ -202,6 +217,8 @@ class PocPullbackStrategy:
                     else:
                         state = "IDLE"
 
+        self._final = {"state": state, "poc": poc, "start_low": start_low, "move_high": move_high,
+                       "bos_idx": bos_idx, "high_idx": high_idx}
         if trade is not None:                               # date terminate cu poziție deschisă
             trade.exit_idx, trade.exit_price, trade.exit_reason = n - 1, c[-1], "open"
             out.append(trade)

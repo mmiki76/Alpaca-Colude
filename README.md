@@ -59,3 +59,23 @@ Nu este sfat financiar. Validează pe date reale (out-of-sample) și în paper t
 Scripturi: `scripts/short15m_*.py`. Rezultate: `results/short15m_*.csv`. Metodă: variantele (36 = SL 1,5/2% × TP 2/2,5× × `swing_n` 3/5/8 ×
 mișcare minimă 1/2/3 ATR) s-au evaluat separat pe „train” (nov 2022 – nov 2024) și „test” (nov 2024 – nov 2026).
 Concluzii și limite sunt în mesajul din sesiune: câștigul e concentrat în 2025-H1, iar clasamentul monedelor nu persistă între perioade.
+
+## Scanner în timp real (VET, short 15m) cu mărime compusă
+
+```bash
+pip install -r requirements.txt
+python scan_live.py --equity 100                 # continuu; starea în vet_state.json
+python scan_live.py --once                       # o singură verificare (ex. din cron la fiecare 15 min)
+python scan_live.py --equity 100 --leverage 3    # mărime = equity * 3
+python scan_live.py --set-equity 107.5           # sincronizează cu contul tău real
+python scan_live.py --close-position             # ai închis poziția manual
+python scan_live.py --replay vet.pkl --replay-bars 6000 --equity 100   # test offline pe istoric
+```
+
+- Varianta: short, SL 2%, TP 5% (2,5×SL), `swing_n` 5, mișcare ≥ 3 ATR. Datele: Binance USDT-M (publice, fără chei).
+- **Nu trimite ordine.** Îți spune când să vinzi, mărimea (= equity curent × leverage) și SL/TP; urmărește poziția pe lumânări
+  și, la SL/TP, actualizează equity-ul (inclusiv comisioane 0,04%/0,02% și slippage 2 bps), deci trade-ul următor intră cu
+  equity-ul nou (100 → 107 după un câștig de 7; 107 → 95 după o pierdere de 12 etc.).
+- Teste: `tests/test_live.py` (mărime compusă, repornire, parsare date). Pe 20.000 de lumânări reale de VET, scannerul
+  produce exact aceleași 29 de trade-uri ca strategia rulată pe tot istoricul.
+- Neverificat din mediul de dezvoltare: apelul live către Binance (blocat acolo, HTTP 451). Testat doar parsarea și `--replay`.
