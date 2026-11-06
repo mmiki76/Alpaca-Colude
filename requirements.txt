@@ -1,0 +1,4 @@
+numpy
+pandas
+alpaca-py   # doar pentru --symbol (date Alpaca)
+pytest      # teste
