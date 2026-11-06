@@ -53,3 +53,9 @@ Nu este sfat financiar. Validează pe date reale (out-of-sample) și în paper t
   Pe date reale (futures 15m/1h, 5 monede, long și short) cele două implementări dau exact aceleași trade-uri.
 - `scripts/fetch_2y.py` + `scripts/grid.py` produc `results/grid_results.csv` și `results/per_coin_tables.md`
   (15 monede × 15m/30m/1h/2h/4h × SL 1,5%/2% × TP 2x/2,5x, long/short, pe ani).
+
+## Short pe 15m, monede noi (55 simboluri USDT-M, ~4 ani)
+
+Scripturi: `scripts/short15m_*.py`. Rezultate: `results/short15m_*.csv`. Metodă: variantele (36 = SL 1,5/2% × TP 2/2,5× × `swing_n` 3/5/8 ×
+mișcare minimă 1/2/3 ATR) s-au evaluat separat pe „train” (nov 2022 – nov 2024) și „test” (nov 2024 – nov 2026).
+Concluzii și limite sunt în mesajul din sesiune: câștigul e concentrat în 2025-H1, iar clasamentul monedelor nu persistă între perioade.
