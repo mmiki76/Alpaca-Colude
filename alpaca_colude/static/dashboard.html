@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paper Bot</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#151a21;--mute:#667085;--line:#e4e7ec;--acc:#2563eb;--up:#0a8a4a;--down:#c8372d;--warn:#b7791f;--chip:#eef1f5}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1318;--card:#171c23;--ink:#e8ecf2;--mute:#8d97a6;--line:#262d37;--acc:#6ea0ff;--up:#35c27a;--down:#ff6b5e;--warn:#e0a84a;--chip:#222a35}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:16px}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:14px}
+h1{font-size:18px;margin:0}
+.badges{display:flex;gap:8px;flex-wrap:wrap}
+.badge{background:var(--chip);border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;color:var(--mute)}
+.badge.mode{color:var(--warn)} .badge.run{color:var(--up)} .badge.off{color:var(--down)}
+.grid{display:grid;gap:12px}
+.kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.k{color:var(--mute);font-size:12px}
+.v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+.sub{font-size:12px;color:var(--mute);font-variant-numeric:tabular-nums}
+.up{color:var(--up)} .down{color:var(--down)}
+.cols{grid-template-columns:minmax(0,2fr) minmax(0,1fr);margin-top:12px}
+.cols>*{min-width:0}
+@media (max-width:860px){.cols{grid-template-columns:1fr}}
+h2{font-size:13px;margin:0 0 10px;color:var(--mute);text-transform:uppercase;letter-spacing:.04em}
+canvas{width:100%;height:230px;display:block}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--mute);font-weight:600;font-size:12px}
+.scroll{overflow-x:auto}
+.form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--mute)}
+input,select{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:7px 8px;font:inherit;font-size:14px;min-width:0}
+input[type=checkbox]{width:18px;height:18px;padding:0}
+.chk{flex-direction:row;align-items:center;gap:8px;color:var(--ink);font-size:13px}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+button{border:1px solid var(--line);background:var(--chip);color:var(--ink);border-radius:8px;padding:8px 12px;font:inherit;font-weight:600;cursor:pointer}
+button.p{background:var(--acc);border-color:var(--acc);color:#fff}
+button.d{color:var(--down)}
+.msg{margin-top:8px;font-size:12px;min-height:16px}
+.ev{max-height:260px;overflow:auto;font-size:12px;font-variant-numeric:tabular-nums}
+.ev div{padding:3px 0;border-bottom:1px solid var(--line)}
+.ev .error{color:var(--down)} .ev .warn{color:var(--warn)} .ev .trade{color:var(--acc)} .ev .signal{color:var(--up)}
+.full{grid-column:1/-1}
+.setup{margin-top:6px;font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="title">Paper Bot</h1>
+    <div class="badges"><span class="badge mode" id="mode">…</span><span class="badge" id="status">…</span><span class="badge" id="upd">…</span></div>
+  </header>
+
+  <div class="grid kpis">
+    <div class="card"><div class="k">Equity</div><div class="v" id="eq">–</div><div class="sub" id="eqsub"></div></div>
+    <div class="card"><div class="k">Randament</div><div class="v" id="ret">–</div><div class="sub" id="pnl"></div></div>
+    <div class="card"><div class="k">Următoarea intrare</div><div class="v" id="next">–</div><div class="sub" id="nextsub"></div></div>
+    <div class="card"><div class="k">Trade-uri</div><div class="v" id="nt">–</div><div class="sub" id="wr"></div></div>
+    <div class="card"><div class="k">Drawdown max</div><div class="v" id="dd">–</div><div class="sub">pe equity realizat</div></div>
+    <div class="card"><div class="k" id="symk">Preț</div><div class="v" id="px">–</div><div class="sub" id="barsub"></div></div>
+  </div>
+
+  <div class="grid cols">
+    <div class="grid">
+      <div class="card"><h2>Poziție și setup</h2><div id="pos"></div><div class="setup" id="setup"></div></div>
+      <div class="card"><h2>Equity (realizat)</h2><canvas id="chart"></canvas></div>
+      <div class="card"><h2>Pe zile</h2><div class="scroll"><table id="daily"></table></div></div>
+      <div class="card"><h2>Trade-uri</h2><div class="scroll"><table id="trades"></table></div></div>
+    </div>
+    <div class="grid" style="align-content:start">
+      <div class="card">
+        <h2>Setări</h2>
+        <div class="form" id="form">
+          <label>Leverage (1–25)<input id="f_leverage" type="number" min="1" max="25" step="1"></label>
+          <label>% din equity folosit<input id="f_size_pct" type="number" min="1" max="100" step="1"></label>
+          <label>SL (%)<input id="f_stop_pct" type="number" min="0.3" max="10" step="0.1"></label>
+          <label>TP (× SL)<input id="f_tp_rr" type="number" min="0.5" max="10" step="0.1"></label>
+          <label>Swing (lumânări)<input id="f_swing_n" type="number" min="2" max="12" step="1"></label>
+          <label>Mișcare min (ATR)<input id="f_min_move_atr" type="number" min="0" max="10" step="0.5"></label>
+          <label>Direcție<select id="f_side"><option>short</option><option>long</option></select></label>
+          <label>Marjă<select id="f_margin_type"><option>ISOLATED</option><option>CROSSED</option></select></label>
+          <label>Simbol<input id="f_symbol" type="text"></label>
+          <label>Equity de start<input id="f_start_equity" type="number" min="1" step="1"></label>
+          <label>Capital<select id="f_capital_mode"><option value="virtual">virtual (start + PnL)</option><option value="account">tot soldul contului</option></select></label>
+          <label>Date<select id="f_data_source"><option value="mainnet">mainnet publice</option><option value="exchange">testnet</option></select></label>
+          <label class="chk full"><input id="f_trading_enabled" type="checkbox"> Trimite ordine (dezactivat = doar semnale)</label>
+          <label class="chk full"><input id="f_software_stop" type="checkbox"> SL/TP software de rezervă</label>
+        </div>
+        <div class="btns">
+          <button class="p" id="save">Salvează setările</button>
+          <button id="pause">Pauză</button>
+          <button class="d" id="close">Închide poziția</button>
+        </div>
+        <div class="msg" id="msg"></div>
+        <div class="sub">Leverage-ul nou se aplică la următoarea intrare. Pauză = nu mai intră în trade-uri noi.</div>
+      </div>
+      <div class="card"><h2>Evenimente</h2><div class="ev" id="events"></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = (x, d = 2) => x == null || isNaN(x) ? '–' : Number(x).toLocaleString('ro-RO', {minimumFractionDigits: d, maximumFractionDigits: d});
+const sgn = x => (x > 0 ? '+' : '') + fmt(x);
+const cls = x => x > 0 ? 'up' : x < 0 ? 'down' : '';
+const px = x => x == null ? '–' : (x < 1 ? fmt(x, 6) : fmt(x, 4));
+let dirty = false, formReady = false, last = null;
+
+document.querySelectorAll('#form input, #form select').forEach(e => e.addEventListener('input', () => dirty = true));
+
+async function post(path, body) {
+  const r = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Requested-With': 'dashboard'}, body: JSON.stringify(body || {})});
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+function setMsg(t, ok) { const m = $('msg'); m.textContent = t; m.style.color = ok ? 'var(--up)' : 'var(--down)'; }
+
+function fillForm(c) {
+  for (const k of ['leverage','size_pct','stop_pct','tp_rr','swing_n','min_move_atr','side','margin_type','symbol','start_equity','capital_mode','data_source'])
+    $('f_' + k).value = c[k];
+  $('f_trading_enabled').checked = c.trading_enabled; $('f_software_stop').checked = c.software_stop;
+}
+function readForm() {
+  const n = id => Number($('f_' + id).value), s = id => $('f_' + id).value;
+  return {leverage: n('leverage'), size_pct: n('size_pct'), stop_pct: n('stop_pct'), tp_rr: n('tp_rr'), swing_n: n('swing_n'),
+    min_move_atr: n('min_move_atr'), side: s('side'), margin_type: s('margin_type'), symbol: s('symbol').toUpperCase().trim(),
+    start_equity: n('start_equity'), capital_mode: s('capital_mode'), data_source: s('data_source'),
+    trading_enabled: $('f_trading_enabled').checked, software_stop: $('f_software_stop').checked};
+}
+$('save').onclick = async () => { try { await post('/api/config', readForm()); dirty = false; setMsg('Salvat.', true); refresh(); } catch (e) { setMsg(e.message, false); } };
+$('pause').onclick = async () => { try { await post(last && last.paused ? '/api/resume' : '/api/pause'); refresh(); } catch (e) { setMsg(e.message, false); } };
+$('close').onclick = async () => { if (confirm('Închizi poziția la preț de piață?')) try { await post('/api/close'); refresh(); } catch (e) { setMsg(e.message, false); } };
+
+function table(el, head, rows) {
+  el.innerHTML = '<tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr>' + (rows.length ? rows.map(r => '<tr>' + r.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') : `<tr><td colspan="${head.length}" style="text-align:center;color:var(--mute)">încă nimic</td></tr>`);
+}
+
+function chart(curve) {
+  const cv = $('chart'), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
+  const st = getComputedStyle(document.documentElement), line = st.getPropertyValue('--line'), mute = st.getPropertyValue('--mute'), acc = st.getPropertyValue('--acc');
+  const ys = curve.map(p => p[1]); if (ys.length < 2) { g.fillStyle = mute; g.fillText('Graficul apare după primul trade.', 12, 24); return; }
+  let lo = Math.min(...ys), hi = Math.max(...ys); if (hi - lo < 1e-9) { lo -= 1; hi += 1; } const pad = (hi - lo) * .12; lo -= pad; hi += pad;
+  const L = 52, R = 8, T = 8, B = 18, x = i => L + (W - L - R) * i / (ys.length - 1), y = v => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+  g.strokeStyle = line; g.fillStyle = mute; g.font = '11px system-ui'; g.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) { const v = lo + (hi - lo) * i / 4, yy = y(v); g.beginPath(); g.moveTo(L, yy); g.lineTo(W - R, yy); g.stroke(); g.fillText(fmt(v, 1), 4, yy + 4); }
+  g.beginPath(); ys.forEach((v, i) => i ? g.lineTo(x(i), y(v)) : g.moveTo(x(i), y(v)));
+  g.strokeStyle = acc; g.lineWidth = 2; g.stroke();
+  g.lineTo(x(ys.length - 1), H - B); g.lineTo(x(0), H - B); g.closePath(); g.globalAlpha = .12; g.fillStyle = acc; g.fill(); g.globalAlpha = 1;
+  g.fillStyle = mute; g.fillText(curve[0][0].slice(5, 16), L, H - 4); const e = curve[curve.length - 1][0].slice(5, 16); g.fillText(e, W - R - g.measureText(e).width, H - 4);
+}
+
+function render(s) {
+  last = s; const c = s.config, q = c.symbol.endsWith('USDC') ? 'USDC' : 'USDT';
+  document.title = `${c.symbol} ${c.side} · paper`;
+  $('title').textContent = `${c.symbol} · ${c.interval} · ${c.side.toUpperCase()} · ${c.leverage}×`;
+  $('mode').textContent = s.mode === 'SIM' ? 'SIMULARE' : 'PAPER · TESTNET';
+  const st = $('status'); st.className = 'badge ' + (s.paused || !c.trading_enabled ? 'off' : 'run');
+  st.textContent = s.paused ? 'PAUZĂ' : !c.trading_enabled ? 'DOAR SEMNALE' : 'RULEAZĂ';
+  $('upd').textContent = s.last_tick ? 'actualizat ' + s.last_tick.slice(11) + ' UTC' : 'fără date încă';
+  $('eq').textContent = fmt(s.equity) + ' ' + q; $('eqsub').textContent = 'start ' + fmt(s.start_equity) + ' ' + q;
+  $('ret').textContent = sgn(s.return_pct) + '%'; $('ret').className = 'v ' + cls(s.return_pct);
+  $('pnl').textContent = 'PnL ' + sgn(s.stats.pnl) + ' ' + q;
+  $('next').textContent = fmt(s.next_size) + ' ' + q; $('nextsub').textContent = `equity × ${c.size_pct}% × ${c.leverage}×`;
+  $('nt').textContent = s.stats.trades; $('wr').textContent = s.stats.win_rate == null ? 'fără trade-uri' : fmt(s.stats.win_rate, 0) + '% câștigătoare (' + s.stats.wins + ')';
+  $('dd').textContent = fmt(s.stats.max_dd_pct) + '%'; $('dd').className = 'v ' + (s.stats.max_dd_pct < -0.005 ? 'down' : '');
+  $('symk').textContent = c.symbol; $('px').textContent = px(s.price); $('barsub').textContent = s.last_bar ? 'ultima lumânare ' + s.last_bar.slice(5, 16).replace('T', ' ') : '';
+  const p = s.position;
+  $('pos').innerHTML = p ? `<div class="v ${cls(p.unrealized)}" style="font-size:18px">${p.side.toUpperCase()} · PnL nerealizat ${p.unrealized == null ? '–' : sgn(p.unrealized)} ${q}</div>
+    <div class="sub">intrare ${px(p.entry)} · cantitate ${fmt(p.qty, 0)} · mărime ${fmt(p.notional)} ${q} · ${p.leverage}× · din ${p.entry_time.slice(5)} UTC</div>
+    <div class="sub">SL ${px(p.stop)} · TP ${px(p.target)}${p.tp_ok === false ? ' (TP doar software)' : ''}</div>` : '<div class="sub">Flat – aștept semnal.</div>';
+  const u = s.setup || {};
+  $('setup').textContent = u.state === 'ACTIVE' ? `Setup activ: aștept pullback în POC ${px(u.poc)} · anulat peste/sub ${px(u.invalidation)}` : 'Niciun setup activ în acest moment.';
+  $('pause').textContent = s.paused ? 'Reia' : 'Pauză';
+  chart(s.curve);
+  table($('daily'), ['Zi (UTC)', 'Trade-uri', 'PnL', 'Cumulat'], s.daily.map(d => [d.day, d.trades, `<span class="${cls(d.pnl)}">${sgn(d.pnl)}</span>`, sgn(d.cum)]));
+  table($('trades'), ['Ieșire', 'Dir.', 'Intrare', 'Ieșire', 'Mărime', 'Motiv', 'PnL', '%', 'Equity'],
+    s.trades.map(t => [t.exit_time.slice(5, 16), t.side, px(t.entry), px(t.exit), fmt(t.notional), t.reason.split(' ')[0], `<span class="${cls(t.pnl)}">${sgn(t.pnl)}</span>`, `<span class="${cls(t.pnl)}">${sgn(t.pnl_pct)}%</span>`, fmt(t.equity_after)]));
+  $('events').innerHTML = s.events.map(e => `<div class="${e[1]}">${e[0].slice(5, 16)} · ${e[2].replace(/</g, '&lt;')}</div>`).join('') || '<div class="sub">fără evenimente</div>';
+  if (!formReady || !dirty) { fillForm(c); formReady = true; }
+}
+
+async function refresh() { try { render(await (await fetch('/api/state')).json()); } catch (e) { $('upd').textContent = 'fără conexiune la bot'; } }
+refresh(); setInterval(refresh, 3000); window.addEventListener('resize', () => last && chart(last.curve));
+</script>
+</body>
+</html>

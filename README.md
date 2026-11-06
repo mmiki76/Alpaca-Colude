@@ -79,3 +79,22 @@ python scan_live.py --replay vet.pkl --replay-bars 6000 --equity 100   # test of
 - Teste: `tests/test_live.py` (mărime compusă, repornire, parsare date). Pe 20.000 de lumânări reale de VET, scannerul
   produce exact aceleași 29 de trade-uri ca strategia rulată pe tot istoricul.
 - Neverificat din mediul de dezvoltare: apelul live către Binance (blocat acolo, HTTP 451). Testat doar parsarea și `--replay`.
+
+## Bot PAPER pe Binance Futures (testnet) + dashboard
+
+```bash
+export BINANCE_TESTNET_API_KEY=...  BINANCE_TESTNET_API_SECRET=...   # chei de TESTNET, doar în variabile de mediu
+python paper_bot.py --selftest        # verifică ciclul complet (ordin, SL, TP, anulare, ieșire) cu mărime minimă
+python paper_bot.py --leverage 3      # pornește botul; dashboard pe http://127.0.0.1:8765
+python paper_bot.py --sim vet.pkl --sim-bars 6000      # simulare pe istoric, fără chei
+```
+
+- Pereche: **VETUSDT** (VETUSDC nu există ca perpetuu pe Binance Futures). Leverage 1–25 setabil din dashboard
+  (se aplică la următoarea intrare); mărime = equity curent × % × leverage, compusă după fiecare trade.
+- Siguranță: doar testnet/demo (mainnet refuzat), SL obligatoriu (dacă nu se poate plasa, poziția se închide), SL/TP software
+  de rezervă, nu intră dacă există o poziție necunoscută pe exchange, dashboard doar pe 127.0.0.1, cheile nu trec prin dashboard.
+- **Neverificat contra Binance:** clientul real (semnarea cererilor e verificată pe vectorul oficial; logica botului pe simulator).
+  Ordinele condiționale (SL) merg pe `/fapi/v1/algoOrder` din 2025-12-09; parametrii nu au putut fi confirmați din documentație,
+  de aceea `--selftest` trebuie rulat pe contul tău de testnet înainte de pornire. Adresa testnet poate fi
+  `testnet.binancefuture.com` sau `demo-fapi.binance.com` (`--base-url`).
+- Testele: `tests/test_bot.py` (semnătură, rotunjiri, client cu răspunsuri simulate, ciclu complet, leverage, SL eșuat, dashboard).
