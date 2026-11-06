@@ -98,3 +98,5 @@ python paper_bot.py --sim vet.pkl --sim-bars 6000      # simulare pe istoric, f�
   de aceea `--selftest` trebuie rulat pe contul tău de testnet înainte de pornire. Adresa testnet poate fi
   `testnet.binancefuture.com` sau `demo-fapi.binance.com` (`--base-url`).
 - Testele: `tests/test_bot.py` (semnătură, rotunjiri, client cu răspunsuri simulate, ciclu complet, leverage, SL eșuat, dashboard).
+
+- Rezumatul discuției, deciziile și rezultatele: [`docs/DISCUTIE.md`](docs/DISCUTIE.md)
