@@ -70,6 +70,51 @@ def fetch_coinbase(product: str, granularity_s: int = 3600, days: int = 365) -> 
     return df.drop_duplicates("t").set_index("t").sort_index()[COLS]
 
 
+def fetch_binance_vision(symbol: str, interval: str = "1h", days: int = 365, market: str = "spot") -> pd.DataFrame:
+    """Istoric Binance din arhiva publică data.binance.vision (fără chei, fără restricții de locație).
+
+    symbol ex: 'SOLUSDT'; interval ex: '15m', '1h', '4h', '6h', '1d';
+    market: 'spot' sau 'futures/um'. Luni complete = fișiere lunare, luna curentă = fișiere zilnice.
+    """
+    import io
+    import zipfile
+    from concurrent.futures import ThreadPoolExecutor
+
+    import requests
+
+    base = f"https://data.binance.vision/data/{market}"
+    today = pd.Timestamp.now(tz="UTC").normalize()
+    start = today - pd.Timedelta(days=days)
+    urls = []
+    for m in pd.period_range(start, today, freq="M"):
+        if m.end_time.tz_localize("UTC") < today:                       # lună încheiată
+            urls.append(f"{base}/monthly/klines/{symbol}/{interval}/{symbol}-{interval}-{m.strftime("%Y-%m")}.zip")
+        else:                                                           # luna curentă: zilnic
+            for d in pd.date_range(max(m.start_time.tz_localize("UTC"), start), today - pd.Timedelta(days=1)):
+                urls.append(f"{base}/daily/klines/{symbol}/{interval}/{symbol}-{interval}-{d:%Y-%m-%d}.zip")
+
+    def get(url):
+        r = requests.get(url, timeout=30)
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+        with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+            return pd.read_csv(z.open(z.namelist()[0]), header=None, usecols=range(6),
+                               names=["t", "open", "high", "low", "close", "volume"])
+
+    with ThreadPoolExecutor(8) as ex:
+        parts = [p for p in ex.map(get, urls) if p is not None]
+    if not parts:
+        raise ValueError(f"Nicio dată pentru {symbol} {interval} ({market})")
+    df = pd.concat(parts)
+    df = df[pd.to_numeric(df["t"], errors="coerce").notna()].astype(float)   # elimină eventuale header-e
+    # spot 2025+ folosește microsecunde, fișierele vechi milisecunde (pot fi amestecate): normalizează per rând
+    df["t"] = np.where(df["t"] > 1e14, df["t"] // 1000, df["t"])
+    df["t"] = pd.to_datetime(df["t"].astype("int64"), unit="ms", utc=True)
+    df = df.drop_duplicates("t").set_index("t").sort_index()[COLS]
+    return df[df.index >= start]
+
+
 def synthetic_bars(n: int = 4000, seed: int = 0) -> pd.DataFrame:
     """Random walk cu regimuri de trend (sus/jos/lateral) – doar pentru teste și demo."""
     rng = np.random.default_rng(seed)
