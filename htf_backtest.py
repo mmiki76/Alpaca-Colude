@@ -3,7 +3,7 @@ import sys, numpy as np, pandas as pd
 
 START_EQ, FRAC = 100.0, 0.60
 MAXBARS, SWING_N = 120, 20
-COSTS = {"cost 0.30%/parte": 0.0030, "cost 0.10%/parte": 0.0010}   # fee + slippage per parte
+COSTS = {"cost 0.15%/parte": 0.0015, "cost 0.07%/parte": 0.0007}   # Binance Futures: taker 0.05% + slippage 0.02% = 0.07% (realist); 0.15% (pesimist). Fara funding.
 
 def levels(df, kind):
     t = df["time"].dt.tz_localize(None)
@@ -83,15 +83,15 @@ if __name__ == "__main__":
                         rows.append(row)
     r = pd.DataFrame(rows); r.to_csv(f"results_htf_{sym}.csv", index=False)
     pd.set_option("display.width", 250, "display.max_columns", 40)
-    k = "cost 0.30%/parte"; k2 = "cost 0.10%/parte"
+    k = "cost 0.15%/parte"; k2 = "cost 0.07%/parte"
     print(f"{sym} | {len(r)} combinatii | impartire: H1 < {half:%Y-%m-%d} <= H2")
     print(f"Profitabile la {k}: {(r[k+'|all']>0).sum()} | la {k2}: {(r[k2+'|all']>0).sum()} | gross_R>0: {(r.gross_R>0).sum()} | |t|>2: {(r.t.abs()>2).sum()}")
-    print("\nMediana pe nivel/latura (gross_R, return% cost 0.30, return% cost 0.10):")
+    print("\nMediana pe nivel/latura (gross_R si return% al contului la cele doua nivele de cost):")
     print(r.groupby(["level", "side"])[["gross_R", k+"|all", k2+"|all"]].median().round(3))
     print("\nTop 8 dupa t-stat:")
     cols = ["level", "side", "var", "ema", "exit", "n", "gross_R", "t", "stop_med", k+"|all", k+"|H1", k+"|H2", k2+"|all", k2+"|H1", k2+"|H2", k2+"|mdd"]
     print(r.sort_values("t", ascending=False)[cols].head(8).round(2).to_string(index=False))
     # selectie pe H1 (cost 0.10), validare pe H2
     best = r.sort_values(k2 + "|H1", ascending=False).head(5)
-    print("\nTop 5 alesi pe H1 (cost 0.10%/parte), apoi verificati pe H2 (out-of-sample):")
+    print("\nTop 5 alesi pe H1 (cost 0.07%/parte), apoi verificati pe H2 (out-of-sample):")
     print(best[cols].round(2).to_string(index=False))
