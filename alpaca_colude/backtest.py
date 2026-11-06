@@ -25,6 +25,7 @@ def backtest(
     max_leverage: float = 1.0,    # limită notional / equity
     slippage_bps: float = 1.0,    # slippage advers la intrare și la stop
     position_pct: float | None = None,  # dacă e setat: notional = position_pct * equity (ignoră risk_pct)
+    fixed_notional: float | None = None,  # dacă e setat: notional FIX per trade (ex. 100 USDT), fără compunere
     fee_bps: float = 0.0,         # comision per parte (intrare și ieșire), în bps din notional
     entry_fee_bps: float | None = None,  # dacă e setat, înlocuiește fee_bps la intrare (ex. 2 = 0,02%)
     exit_fee_bps: float | None = None,   # dacă e setat, înlocuiește fee_bps la ieșire (ex. 4 = 0,04%)
@@ -52,7 +53,9 @@ def backtest(
         risk_per_unit = abs(entry - t.stop)
         if risk_per_unit <= 0:
             continue
-        if position_pct is not None:
+        if fixed_notional is not None:
+            qty = fixed_notional / entry
+        elif position_pct is not None:
             qty = realized * position_pct / entry
         else:
             qty = min(realized * risk_pct / risk_per_unit, realized * max_leverage / entry)
@@ -76,7 +79,9 @@ def backtest(
     equity = initial_equity + by_exit["pnl"].cumsum()
     equity.index = by_exit["exit_time"]
     wins, losses = trades.loc[trades.pnl > 0, "pnl"], trades.loc[trades.pnl <= 0, "pnl"]
-    dd = (equity / equity.cummax() - 1).min()
+    curve = np.concatenate([[initial_equity], equity.to_numpy()])      # include capitalul inițial
+    peak = np.maximum.accumulate(curve)
+    dd = float((curve / peak - 1).min())
     stats = {
         "trades": len(trades),
         "win_rate": float((trades.pnl > 0).mean()),
@@ -85,5 +90,7 @@ def backtest(
         "total_return": float(equity.iloc[-1] / initial_equity - 1),
         "max_drawdown": float(dd),
         "final_equity": float(equity.iloc[-1]),
+        "net_pnl": float(equity.iloc[-1] - initial_equity),
+        "max_drawdown_abs": float((curve - peak).min()),
     }
     return BacktestResult(trades, equity, stats)

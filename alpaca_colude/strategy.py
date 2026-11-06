@@ -51,6 +51,8 @@ class StrategyParams:
     min_stop_pct: float = 0.0      # distanța minimă intrare->SL ca fracție din preț (0.02 = 2%);
                                    # dacă stop-ul structural e mai aproape, e mutat la această distanță
     tp_rr: float | None = None     # None: target = higher high; altfel TP = intrare ± tp_rr * risc
+    fixed_stop_pct: float | None = None  # SL EXACT la această distanță de intrare (0.015 = 1,5%),
+                                         # ignoră fitilul structural și min_stop_pct
 
 
 @dataclass
@@ -187,8 +189,11 @@ class PocPullbackStrategy:
                 touch_low = l[t] if touch_low is None else min(touch_low, l[t])
                 if c[t] > poc:                              # reacție: respinge POC-ul
                     entry = c[t]
-                    stop = touch_low - p.stop_buffer_atr * atr[t]
-                    stop = min(stop, entry - p.min_stop_pct * abs(entry))   # SL minim
+                    if p.fixed_stop_pct is not None:                        # SL procentual fix
+                        stop = entry - p.fixed_stop_pct * abs(entry)
+                    else:                                                   # SL structural (+ minim)
+                        stop = touch_low - p.stop_buffer_atr * atr[t]
+                        stop = min(stop, entry - p.min_stop_pct * abs(entry))
                     risk = entry - stop
                     target = move_high if p.tp_rr is None else entry + p.tp_rr * risk
                     if risk > 0 and (target - entry) >= p.min_rr * risk:

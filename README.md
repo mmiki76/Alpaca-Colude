@@ -44,3 +44,12 @@ Risc: 1% din equity per trade (`--risk`), notional maxim 1× equity, slippage 1 
 - Nu există încă trimitere de ordine; strategia produce doar semnale/backtest.
 
 Nu este sfat financiar. Validează pe date reale (out-of-sample) și în paper trading înainte de bani reali.
+
+## Actualizare: audit, SL fix, mărime fixă, rezultate
+
+- `StrategyParams.fixed_stop_pct` (SL exact la x% de la intrare) și `tp_rr` (TP = x × SL); `backtest(..., fixed_notional=100)` pentru
+  mărime fixă per trade, fără compunere. Drawdown-ul include acum capitalul inițial.
+- `tests/reference_impl.py` = implementare independentă a strategiei, folosită pentru audit (`tests/test_reference.py`).
+  Pe date reale (futures 15m/1h, 5 monede, long și short) cele două implementări dau exact aceleași trade-uri.
+- `scripts/fetch_2y.py` + `scripts/grid.py` produc `results/grid_results.csv` și `results/per_coin_tables.md`
+  (15 monede × 15m/30m/1h/2h/4h × SL 1,5%/2% × TP 2x/2,5x, long/short, pe ani).
