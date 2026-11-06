@@ -27,7 +27,7 @@ def main() -> None:
     ap.add_argument("--risk", type=float, default=0.01, help="risc per trade (fracție din equity)")
     ap.add_argument("--scan", action="store_true", help="arată doar semnalul de pe ultima lumânare")
     for f in fields(StrategyParams):
-        t = (lambda s: s.lower() in ("1", "true", "yes")) if f.type in (bool, "bool") else type(f.default)
+        t = (lambda s: s.lower() in ("1", "true", "yes")) if f.type in (bool, "bool") else (type(f.default) if f.default is not None else float)
         ap.add_argument(f"--{f.name.replace('_', '-')}", type=t, default=f.default)
     a = ap.parse_args()
 

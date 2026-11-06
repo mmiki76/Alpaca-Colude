@@ -101,3 +101,15 @@ def test_backtest_risk_is_about_one_percent():
     assert res.stats["trades"] > 0
     stops = res.trades[res.trades.reason == "stop"]
     assert (stops.r.between(-1.2, -0.99)).all()
+
+
+def test_min_stop_and_rr_target():
+    df = synthetic_bars(4000, seed=2)
+    params = StrategyParams(min_stop_pct=0.02, tp_rr=2.5)
+    trades = PocPullbackStrategy(params).run(df)
+    assert trades
+    for t in trades:
+        assert t.risk / t.entry_price >= 0.02 - 1e-9          # SL la minim 2%
+        assert t.planned_rr == pytest.approx(2.5)               # TP = 2.5 x SL
+        d = 1 if t.side == "long" else -1
+        assert d * (t.target - t.entry_price) > 0 > d * (t.stop - t.entry_price)

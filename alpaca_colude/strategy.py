@@ -48,6 +48,9 @@ class StrategyParams:
     max_wait_bars: int = 60        # cât așteptăm pullback-ul după HH
     strict_structure: bool = True  # True: și fitilul sub HL anulează setup-ul;
                                    # False: doar închiderea sub HL
+    min_stop_pct: float = 0.0      # distanța minimă intrare->SL ca fracție din preț (0.02 = 2%);
+                                   # dacă stop-ul structural e mai aproape, e mutat la această distanță
+    tp_rr: float | None = None     # None: target = higher high; altfel TP = intrare ± tp_rr * risc
 
 
 @dataclass
@@ -185,9 +188,11 @@ class PocPullbackStrategy:
                 if c[t] > poc:                              # reacție: respinge POC-ul
                     entry = c[t]
                     stop = touch_low - p.stop_buffer_atr * atr[t]
+                    stop = min(stop, entry - p.min_stop_pct * abs(entry))   # SL minim
                     risk = entry - stop
-                    if risk > 0 and (move_high - entry) >= p.min_rr * risk:
-                        trade = Trade(side, start_idx, bos_idx, high_idx, poc, t, entry, stop, move_high)
+                    target = move_high if p.tp_rr is None else entry + p.tp_rr * risk
+                    if risk > 0 and (target - entry) >= p.min_rr * risk:
+                        trade = Trade(side, start_idx, bos_idx, high_idx, poc, t, entry, stop, target)
                         state = "IN_TRADE"
                     else:
                         state = "IDLE"
